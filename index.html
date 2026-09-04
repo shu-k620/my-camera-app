@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>写真アップロード</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; padding: 20px; background: #f9f9f9; }
+    .btn { background: #007bff; color: white; padding: 15px 30px; font-size: 18px; border: none; border-radius: 8px; cursor: pointer; }
+    #status { margin-top: 20px; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+  <h2>写真撮影・送信</h2>
+  <p>下のボタンを押して写真を撮影してください</p>
+
+  <!-- スマホの標準カメラを直接起動するinputタグ -->
+  <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;">
+  <button class="btn" onclick="document.getElementById('cameraInput').click();">📸 撮影する</button>
+
+  <div id="status"></div>
+
+  <script>
+    const GAS_URL = "https://script.google.com/a/macros/nkc-j.co.jp/s/AKfycbyeZ43r2p8yn1EzopPz4iEn5oH8qmaZkkpGlebQK74ShSFzBgumvi-nnhvSWxEqHJjY/exec";
+    const cameraInput = document.getElementById('cameraInput');
+    const statusDiv = document.getElementById('status');
+
+    cameraInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      statusDiv.innerText = "アップロード中...";
+
+      // 画像をBase64に変換してGASに送信
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64Data = reader.result.split(',')[1];
+        const payload = {
+          filename: `photo_${Date.now()}.jpg`,
+          mimeType: file.type,
+          base64: base64Data
+        };
+
+        try {
+          const response = await fetch(GAS_URL, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+          });
+          const result = await response.json();
+
+          if (result.result === "success") {
+            statusDiv.innerText = "✅ 送信完了しました！";
+          } else {
+            statusDiv.innerText = "❌ 送信に失敗しました。";
+          }
+        } catch (error) {
+          console.error(error);
+          statusDiv.innerText = "エラーが発生しました。";
+        }
+      };
+
+      reader.readAsDataURL(file);
+    });
+  </script>
+</body>
+</html>
