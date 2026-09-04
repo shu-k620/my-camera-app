@@ -5,24 +5,64 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>写真アップロード</title>
   <style>
-    body { font-family: sans-serif; text-align: center; padding: 20px; background: #f9f9f9; }
-    .btn { background: #007bff; color: white; padding: 15px 30px; font-size: 18px; border: none; border-radius: 8px; cursor: pointer; }
-    #status { margin-top: 20px; font-weight: bold; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      text-align: center; 
+      padding: 40px 20px; 
+      background: #f4f6f9; 
+      margin: 0;
+    }
+    .container {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 30px 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      max-width: 400px;
+      margin: 0 auto;
+    }
+    h2 { color: #333; margin-bottom: 8px; }
+    p { color: #666; font-size: 14px; margin-bottom: 24px; }
+    .btn { 
+      background: #007bff; 
+      color: white; 
+      padding: 16px 32px; 
+      font-size: 18px; 
+      font-weight: bold;
+      border: none; 
+      border-radius: 50px; 
+      cursor: pointer; 
+      box-shadow: 0 4px 10px rgba(0,123,255,0.3);
+      transition: background 0.2s;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .btn:active { background: #0056b3; }
+    #status { 
+      margin-top: 24px; 
+      font-size: 15px;
+      font-weight: bold; 
+      color: #333;
+      word-break: break-all;
+    }
   </style>
 </head>
 <body>
 
-  <h2>写真撮影・送信</h2>
-  <p>下のボタンを押して写真を撮影してください</p>
+  <div class="container">
+    <h2>写真の送信</h2>
+    <p>下のボタンを押して撮影すると<br>自動で共有フォルダへ保存されます</p>
 
-  <!-- スマホの標準カメラを直接起動するinputタグ -->
-  <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;">
-  <button class="btn" onclick="document.getElementById('cameraInput').click();">📸 撮影する</button>
+    <!-- スマホの背面カメラを直接起動するタグ -->
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;">
+    <button class="btn" onclick="document.getElementById('cameraInput').click();">📸 写真を撮影する</button>
 
-  <div id="status"></div>
+    <div id="status"></div>
+  </div>
 
   <script>
+    // ★STEP 1で取得したGASのURLを貼り付けてください
     const GAS_URL = "https://script.google.com/a/macros/nkc-j.co.jp/s/AKfycbyeZ43r2p8yn1EzopPz4iEn5oH8qmaZkkpGlebQK74ShSFzBgumvi-nnhvSWxEqHJjY/exec";
+
     const cameraInput = document.getElementById('cameraInput');
     const statusDiv = document.getElementById('status');
 
@@ -30,38 +70,78 @@
       const file = e.target.files[0];
       if (!file) return;
 
-      statusDiv.innerText = "アップロード中...";
+      statusDiv.innerHTML = "⏳ 画像処理中...";
 
-      // 画像をBase64に変換してGASに送信
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64Data = reader.result.split(',')[1];
+      try {
+        // 画像をリサイズ・圧縮する処理（GASの制限容量オーバーを回避）
+        const compressedBase64 = await compressImage(file, 1280, 0.8);
+
+        statusDiv.innerHTML = "⏳ アップロード中...";
+
         const payload = {
           filename: `photo_${Date.now()}.jpg`,
-          mimeType: file.type,
-          base64: base64Data
+          mimeType: "image/jpeg",
+          base64: compressedBase64
         };
 
-        try {
-          const response = await fetch(GAS_URL, {
-            method: 'POST',
-            body: JSON.stringify(payload)
-          });
-          const result = await response.json();
+        // GASへ送信
+        const response = await fetch(GAS_URL, {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
 
-          if (result.result === "success") {
-            statusDiv.innerText = "✅ 送信完了しました！";
-          } else {
-            statusDiv.innerText = "❌ 送信に失敗しました。";
-          }
-        } catch (error) {
-          console.error(error);
-          statusDiv.innerText = "エラーが発生しました。";
+        const result = await response.json();
+
+        if (result.result === "success") {
+          statusDiv.innerHTML = "✅ 送信が完了しました！";
+        } else {
+          // GAS側で起きたエラー内容を表示
+          statusDiv.innerHTML = `❌ エラー: ${result.message || "処理に失敗しました"}`;
         }
-      };
-
-      reader.readAsDataURL(file);
+      } catch (error) {
+        console.error(error);
+        // 通信やブラウザ側のエラー表示
+        statusDiv.innerHTML = `⚠️ 通信エラー: ${error.message}`;
+      }
     });
+
+    // 画像圧縮関数（長辺1280px、画質80%にリサイズ）
+    function compressImage(file, maxWidth, quality) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            let width = img.width;
+            let height = img.height;
+
+            if (width > maxWidth || height > maxWidth) {
+              if (width > height) {
+                height = Math.round((height * maxWidth) / width);
+                width = maxWidth;
+              } else {
+                width = Math.round((width * maxWidth) / height);
+                height = maxWidth;
+              }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            const base64 = canvas.toDataURL('image/jpeg', quality).split(',')[1];
+            resolve(base64);
+          };
+          img.onerror = (err) => reject(err);
+          img.src = event.target.result;
+        };
+        reader.onerror = (err) => reject(err);
+        reader.readAsDataURL(file);
+      });
+    }
   </script>
 </body>
 </html>
